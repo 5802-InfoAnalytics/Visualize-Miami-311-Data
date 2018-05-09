@@ -1,0 +1,441 @@
+---
+title: "Exploratory Analysis of Miami 311 Data"
+author: "Sejal Bhakta, Brea Pickford, Siana Pietri"
+date: "April 13, 2018"
+output:
+  html_document: default
+---
+
+## INTRODUCTION 
+
+The goal of our project was to better understand the Miami 311 data set categories **Animal Bites to a Person** and **Pitbull Investigations** through visualization techniques using R and Geographical Information System (GIS) software. 
+
+Our first thoughts were to analyze the variables **Goal Days** versus **Actual Days Completed**. However, the complexity of the data set made this a challanging task. After carefull study of the levels in **`issue.type`**, the variable was narrowed to include only **Animal Bite To A Person** and **Pit Bite Investigation**. Initially, we thought there might be a relationship between the amount of animal bites and pit bull investigation. For example, an area with a high level of animal bites would have a cluster of pit bull investigation. However, in the first stages of exploratory analysis the idea proved to be unfruitful and we opted to explore the data through visualization.
+
+## IMPORTANCE OF TOPIC
+
+Pitbulls are veiwed as an agressive breed that pose a danger to humans and other animals. Miami Dade County has legislature in place that puts specific restrictions on pitbulls. If the two categories of **issue.type** were correlated, we would better understand the implementation of pitbull restrictions. 
+
+The Miami Dade County Ordanance states pitbulls should be confined indoors or outdoors because pitbulls are naturally inclined to attack humans and other animals. In addition, the owner should have a "Dangerous Dog" sign posted. If the owners fail to comply with these rules the dogs will be muzzled to prevent bites and injuries to others. They are also to be kept on a leash. Exception to these rules are for dogs participating in dog shows, contests, or hunting. 
+
+## LOADING AND EXAMINING THE DATA 
+
+To begin exploring Miami 311 Data we downloaded the csv file from the Miami Dade County website ( https://opendata.miamidade.gov/311/311-Service-Requests-Miami-Dade-County/dj6j-qg5t ) and saved it to our working directories. Next, we imported the csv file to an R object called **df**. Downloading and importing should take some time because the dataset contains over 641,000 rows. After filtering for our selected variables, there were over 13,000 observations. 
+
+```{r}
+#df <- read.csv("311_Service_Requests_-_Miami-Dade_County.csv")
+#head(df) # much too long to display in document 
+#str(df)  # much too long to display in document
+#names(df)
+```
+
+Calling **`str(df)`** displays the variables, types of variables, and the first few entries per row. This data frame contains a mixture of categorical and numerical variables. Categorical variables are usually indicated by **`Factor: w/ levels`**. In addition, calling **`names(df)`** will display the column names.This data frame consists of 23 columns. 
+
+## CLEANING THE DATA 
+
+For the purpose of exploring the data we drew a random sample of size 50 from **df**. We called this df2. We set **`replace = FALSE`** so no entries were repeated. Then we saved it to a csv file titled "df2.csv".   
+
+```{r message=FALSE}
+library(dplyr)
+```
+```{r}
+#df2 <- sample_n(df, size = 50, replace = FALSE)
+# save as csv
+ #write.csv(df2, "df2.csv")
+```
+
+Using the **dplyr** package, we selected the columns needed for analysis from **df2**. We had no use for the columns titled:  Ticket.Created.Date...Time, Ticket.Last.Updated.Date...Time, Ticket.Closed.Date...Time , Ticket.Status, X.Coordinate, and Y.Coordinate, among others. See the code below for what other columns we removed from the data frame. We saved the selected columns to a new R object. We called it **cdf** for clean data frame. The **dplyr** package is handy for cleaning because of its functions like **`select()`** and **`filter()`**. The pipe operator **`%>%`** is also useful to perform various tasks at once. We shortened the original column names and set them all to lower case. Using the functions **`fix_year()`**, **`fix_month()`**, and **`convert_month()`** from the **Miami311p** package, we changed the character strings in the **`created`** column into two additional columns of **`year`** and **`month`**. Then we removed the **`created`** column. Lastly, we decided it best to save data at every stage incase we need to retrace our steps and therefore, created a new csv file with the clean data.  
+
+```{r}
+df2 <- read.csv("df2.csv")
+cdf<- df2 %>% select("Ticket.ID", "Issue.Type", "City", "Neighborhood...District...Ward...etc.", "Created.Year.Month", "Longitude", "Latitude", "Method.Received", "Goal.Days", "Actual.Completed.Days")
+colnames(cdf) <- c("id", "issue.type", "city", "district", "created","longitude", "latitude", "method", "goal.days", "actual.days")
+
+library(Miami311p)
+#create vectors of months and years
+year <- fix_year(cdf$created)
+month <- fix_month(cdf$created)
+month <- convert_month(month) 
+
+# bind month and years to clean data frame
+cdf$year <- factor(year)
+cdf$month <- factor(month)
+
+#check structure
+str(cdf)
+
+# check to for column position of "created" and remove it and reassign cdf 
+names(cdf)
+cdf<- cdf[ , -5]
+names(cdf)
+
+# examine new product
+head(cdf , 3)
+
+# save to csv
+# write.csv(cdf, "Clean df2.csv")
+
+```
+
+## EXPLORING IN EXCEL
+
+Once the data was cleaned we needed to narrow our scope of analysis. After calling **`str(cdf)`** we noticed that the **`city`** column had 37 levels, **`district`** had 14 levels, and **`issue.type`**, our main variable for analysis, had 205 levels.  We imported the cleaned data set into Excel to take a closer look. Excell allowed us to look at the data set all at once and make use of its filter function that allowed us to examine the levels of each categorical variable. The picture below demonstrates the complexity of the data. There are sublevels within levels in the variable **`issue.type`**. For example there is the top level "Traffic" with multiple sublevels such as "Signal Ped Crossing Time Too Short" and "Sign Down Damaged Faded Missing (Other Than Control Sign)".
+
+![Example of Excel Filter Function](/Users/pietr/Desktop/Data/excel.PNG)
+
+## VISUALIZATIONS  
+
+1) Barchart: "Pit Bull Investigation" & "Animal Bite To A Person" by year
+2) GIS: Images of "Pit Bull Investigation" and "Animal Bite To A Person"
+3) Mapping in R 
+4) Barchart: Frequency of cities; category "Pit Bull Investigations"
+5) Barchart: Frequency of cities; category "Animal Bite To A Person"
+
+The following sections use a data set subsetted from **df** using Excel. The column names have not been changed like in the initial cleaning presented above.  
+
+## CREATING A BARCHART: CHART 1 
+## "Pit Bull Investigation" and "Animal Bite to A Person" (2013 - 2017)
+
+```{r}
+library(ggplot2)
+```
+
+Read in the data into an R object.  
+```{r}
+pb<- read.csv("C:/Users/pietr/Desktop/Data/311 Bites and Pits.csv")
+```
+
+Create a plot using the **ggplot2** package. The base of plotting in ggplot is always **`ggplot()`**. Within the **`aes()`** argument include x axis and the y axis will be the count. In this case, x = **`Created.Year.Month`**. We want to add color based on the **`Issue Type`** so we put that as out **`fill`** argument. 
+```{r}
+ggplot(pb, aes(`Created.Year.Month`, fill = `Issue.Type`)) + 
+  # dodge will unstack the bars and put them side by side
+  geom_bar(position = "dodge")+ 
+  # x axis title 
+  xlab('Year')+
+  # y axis title
+  ylab("Count")+
+  # title of graph
+  ggtitle("Animal Bite to a Person and Pit Bull Investigations 2013 - 2017")+
+  # add a legend: name = "title of legend", values = c("colors", "of", "legend"))
+  scale_fill_manual(name = "Issue Type", values = c("rosybrown3", "cornflowerblue"))+
+  # remove the default grey background
+  theme_minimal()+
+  #change legend position on graph 
+  theme(legend.position = "top")+
+  #selects title of the plot, selects text of title, hjust = (side of graph 0 - 1)
+  # hjust = 0.5, will center the title
+  theme(plot.title = element_text(hjust = 0.5, size =15))
+```
+
+## MAPPING IN R
+```{r}
+setwd("C:/Users/pietr/Desktop/Data")
+library(dplyr)
+library(ggplot2)
+library(devtools)
+library(stringr)
+library(maps)
+#install.packages("mapdata")
+library("mapdata")
+#install.packages("ggmap")
+#library(ggmap)
+
+# Create your data object 
+pb<- read.csv("C:/Users/pietr/Desktop/Data/311 Bites and Pits.csv")
+
+# Source: http://eriqande.github.io/rep-res-web/lectures/making-maps-with-R.html
+
+# Create the Florida map 
+states <- map_data("state")
+fl_map <- subset(states, region=="florida")
+head(fl_map)
+
+# Get the counties 
+counties <- map_data("county")
+```
+```{r results = "hide"}
+# Filter out the county of Miami-Dade
+md <- counties %>% filter(subregion == "miami-dade")
+md
+```
+```{r}
+# Plot Miami-Dade
+md_map <-ggplot(md, mapping = aes(x= long, y= lat))+
+  coord_fixed(1.3) +
+  geom_polygon(color= "black", fill="cornsilk2")+
+  xlab("Longitude")+
+  ylab("Latitiude")+
+  ggtitle("Miami Dade County\n2013-2017")+
+  theme_dark()+
+  theme(text = element_text(size = 15))
+md_map
+
+# Split the data to be plotted
+set.seed(101)
+pb2 <- sample_n(pb, size= 1000)
+pb2$Issue.Type<- factor(pb2$Issue.Type)
+pb2.split<- split(pb2, pb2$Issue.Type)
+pb2b<- pb2.split$`ANIMAL BITE TO A PERSON`
+pb2p<-pb2.split$`PIT BULL INVESTIGATION`
+
+# Plot the data points by lattitude and longitude. 
+# Panel by year, color by issue type
+md_map2 <- md_map+ 
+  geom_point(data = pb2b, aes(Longitude, Latitude, color= "rosybrown3"),alpha = 0.5)+
+  geom_point(data = pb2p, aes(Longitude, Latitude, color= "cornflowerblue"), alpha = 0.5)+
+  coord_fixed(1.3)+
+  facet_grid(.~Created.Year.Month)+
+  theme(plot.title = element_text(hjust = 0.5, size =30))+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+  scale_colour_manual(name = 'Issue Type', guide = "legend",
+                      values =c('rosybrown3'='rosybrown3','cornflowerblue'='cornflowerblue'), 
+                      labels = c('ANIMAL BITE TO A PERSON','PIT BULL INVESTIGATION'))+
+  theme(legend.position = "top", 
+        legend.text.align = 0.5, 
+        legend.text = element_text(size = 8), 
+        legend.title = element_text(size= 12),
+        legend.key=element_rect(fill = "white"))+
+  guides(colour = guide_legend(title.position = "top", title.hjust = 0.5))
+
+md_map2
+```
+
+## CREATING GIS IMAGES 
+##"Animal Bite To A Person" and "Pit Bull Investigation"
+
+The map created in R lacked redability. GIS provided a better way to display the spatial data. Below are some of the resulting graphics. 
+
+![GIS Image of Animal Bites (white) and Pit Bull Investigations (black)](/Users/pietr/Desktop/Data/GIS1.PNG)
+
+![GIS Image of all Instances of Animal Bites and Pit Bull Investigations color coded by District](/Users/pietr/Desktop/Data/GIS2.PNG)
+
+![GIS Image of all Instances of Animal Bites and Pit Bull Investigations color coded by District](/Users/pietr/Desktop/Data/GIS3.PNG)
+
+For this map, the plotted symbols are Animal Bites to a Person and Pitbull Investigations in 2017. The yellow symbols represents Animal Bites to a Person. They grey symbol is Pitbull Investigations. The heatmap also shows the concentration of incidents in various areas. 
+![GIS Image by Incident Type used to show which areas had a high concentration of pitbull and animal bites.](/Users/pietr/Desktop/Data/GIS4.PNG)
+
+This map shows the concentration by district. The heatmap shows concentration per area. 
+![GIS Image by District used to show which areas had a high concentration of pitbull and animal bites.](/Users/pietr/Desktop/Data/GIS5.PNG)
+
+The next two images below are a side by side comparison showing which areas had a high, medium, or low concentration of incidents.  
+![GIS Image Animal Bites to a person (2013 - 2017).](/Users/pietr/Desktop/Data/GIS6.PNG)
+
+![GIS Image Pitbull Investigations (2013 - 2017).](/Users/pietr/Desktop/Data/GIS7.PNG)
+
+## CREATING A BARCHART: CHART 2
+## Frequency Barchart of "Pitbull Investigation" (2017)
+
+Our team wanted to find the most frequent cities in Miami Dade county appearing among "Pit Bite Investigation" for the year 2017. [2]
+
+Using the data set **pb** filter for the 2017 year. We saved it to the object **pb2017**.
+```{r}
+pb2017<- pb %>% filter(`Created.Year.Month` == 2017) 
+```
+
+Since we wanted to plot the most frequent cities, we first plotted all the cities using the **plotly** package. Ploty has interactive graphs so, we could directly point and click to find values. This graph showed an overwhelming amount of occurances came from "Miami_Dade_County".Due to this, we decided to remove the city from our dataset. In addition, "Miami_Dade_County" is not a city of the county itself. We belive it is given to cases that have undocumented cities or is a default value. 
+```{r message=FALSE}
+g2 <- ggplot(pb2017, aes(City, fill = `Issue.Type`)) + 
+  geom_bar(position = "dodge") 
+library(plotly)
+ggplotly(g2)
+```
+
+Factor **`city`**. Split **pb2017** by **`city`**. This creates a list of all the cities and the data that is attached to them. This allowed us to remove the city as an element of the list. 
+```{r}
+pb2017$City<- factor(pb2017$City)
+pbsplit <- split(pb2017, pb2017$City)
+tail(names(pbsplit),10)
+```
+
+Calling **`names(pbsplit)`** displayed the position of "Miami_Dade_County" in the list. 
+The code below removes it. 
+```{r}
+pbsplit[[24]]<- NULL
+tail(names(pbsplit), 10)
+```
+
+Combine the list back into a data frame. Character strings will be characterized as factors. 
+```{r}
+pbmerge <- do.call(rbind.data.frame, pbsplit)
+# Just becasue we thought it important to know how much data we were missing
+sum(is.na(pbmerge))
+```
+
+Split the data frame by Issue Type. We called this object **pbtype.split**. Then assign the lists by Issue Type to **bite.split** for animal bites and **pit.split** for pit bull investigations. 
+```{r}
+pbtype.split<- split(pbmerge, pbmerge$Issue.Type)
+bite.split<- pbtype.split$`ANIMAL BITE TO A PERSON`
+pit.split<- pbtype.split$`PIT BULL INVESTIGATION`
+```
+
+Extract the **`city`** column from **bite.split** and **pit.split**. This is the text information we used to create the wordclouds. Save them to as tab deliminated file in two seperate empty folders in the working directory. 
+```{r}
+bite.city <- as.character(bite.split$City)
+pit.city <- as.character(pit.split$City)
+# save to txt file
+#write.table(bite.city, "bite.txt", sep="\t")
+#write.table(pit.city, "pit.txt", sep="\t")
+``` 
+
+Download the required packages. 
+```{r message=FALSE, warning=FALSE}
+library(tm)
+library(wordcloud)
+```
+
+Create the corpus. 
+```{r}
+bite.text <- readLines("C:/Users/pietr/Desktop/Data/LIS 5802 Fianl Project bite word cloud/bite.txt")
+bite.corpus <- Corpus(VectorSource(bite.text))
+```
+
+Clean the text. From inspecting the head of the bite corpus, there were many extra characters that we needed to remove such as **"\t"** and numbers. The toSpace function was taken from [2]. There is also other text cleaning code for patterns we thought we would need to remove but we chose not to because it sperated the phrases in the word cloud. 
+```{r}
+toSpace <- content_transformer(function (x , pattern ) gsub(pattern, " ", x))
+bite.corpus <- tm_map(bite.corpus, toSpace, "\t")
+# bite.corpus <- tm_map(bite.corpus, toSpace, "_")
+bite.corpus <- tm_map(bite.corpus, removeNumbers)
+bite.corpus <- tm_map(bite.corpus, removePunctuation)
+# bite.corpus <- tm_map(bite.corpus, content_transformer(tolower))
+```
+
+Create the term document matrix. The **tm** package does all the work here. We saved the matrix as **bite.tdm** 
+```{r}
+bite.tdm <- TermDocumentMatrix(bite.corpus)
+bite.matrix <- as.matrix(bite.tdm)
+bite.sort <- sort(rowSums(bite.matrix), decreasing = TRUE)
+as.vector(bite.sort)
+```
+
+Create a vector with the populations of each city represented in the term document matrix. 
+```{r}
+# Divide by population 
+Frequency<- bite.sort
+pop <- as.vector(c(453579, 236387, 44707, 45704, 60512, 107167, 46780, 
+                 58786, 87779, 41523, 23410, 35762, 18223, 11245, 11657,
+                 13499, 21744, 29361, 15219, 12344, 13809, 5965, 10493,
+                 838, 20832, 5744, 7137, 5628, 3055, 2325, 2375))
+```
+
+Combine the term document matrix.
+```{r results = "hide"}
+City <- names(bite.sort)
+bite.chart <- print(cbind(City, Frequency,pop), quotes = FALSE)
+bite.chart <- as.data.frame(bite.chart)
+```
+
+Extract the frequency and population. 
+```{r warning=FALSE}
+str(bite.chart)
+bite.chart$Frequency<- as.numeric(bite.chart$Frequency)
+bite.chart$pop<- as.numeric(bite.chart$pop)
+freq<- bite.chart$Frequency
+n <- (freq/(pop))
+bite.chart$n <- n 
+
+attach(bite.chart)
+bite.chart2 <- bite.chart[order(-n),]
+```
+
+Fix frequency data for plotting. This pairs the names the cities with their frequencies.We subsetted the 5 highest cities denoted by ***fc** from the data. 
+```{r}
+f <- as.numeric(as.vector(bite.chart2[1:5,4]))
+c <- as.vector(bite.chart2[1:5,1])
+fc<- as.data.frame(cbind(f,c))
+fc$f<-as.numeric(f)
+fc$c <- c("Town of Medley", "City of West Miami", "Village of Key Biscayne", "Town of Bay Harbor Islands", "City of Surfside")
+```
+
+Plot the frequencies in a bar chart.
+```{r}
+ggplot(fc, aes(c, f))+
+  geom_bar(stat = "identity", fill="rosybrown3")+
+  xlab("City")+
+  ylab("Frequency per Population")+ 
+  ggtitle("Cities with Highest Frequency of 311 Calls for Animal Bite to a Person for 2017")+
+  theme_minimal()
+```
+
+## CREATING A BARCHART: CHART 3
+## Frequency Barchart of Pitbull Investigations
+
+```{r results = "hide"}
+# Create the corpus 
+pit.text <- readLines("C:/Users/pietr/Desktop/Data/LIS 5802 Final Project pit word cloud/pit.txt")
+pit.corpus <- Corpus(VectorSource(pit.text))
+inspect(pit.corpus)
+
+# Clean the text. Code taken from: 
+pit.corpus <- tm_map(pit.corpus, toSpace, "\t")
+pit.corpus <- tm_map(pit.corpus, removeNumbers)
+pit.corpus <- tm_map(pit.corpus, removePunctuation)
+#pit.corpus <- tm_map(pit.corpus, removeWords, c("CityofMiami")) # Remove after because of high population
+inspect(pit.corpus)
+
+# Term Document Matrix 
+pit.tdm <- TermDocumentMatrix(pit.corpus)
+pit.matrix <- as.matrix(pit.tdm)
+pit.sort <- sort(rowSums(pit.matrix), decreasing = TRUE)
+as.vector(pit.sort)
+
+# Combine Term Document Matrix into a table
+City <- names(pit.sort)
+Frequency <- as.numeric(pit.sort[is.numeric(pit.sort)])
+pit.chart <- print(cbind(City, Frequency), quotes = FALSE)
+pit.chart <- as.data.frame(pit.chart)
+
+# Account for population
+Frequency<- pit.sort
+pop <- as.vector(c(453579, 107167, 60512, 40286, 87779, 58786, 
+                   58786, 41523, 29361, 11245, 15219, 46780, 5744, 
+                   45704, 21744, 13809, 23410, 11657, 10493, 35762,
+                   18223, 5965, 2325))
+
+str(pit.chart)
+pit.chart$Frequency<- as.numeric(pit.chart$Frequency)
+pit.chart$pop<- as.numeric(pop)
+freq<- pit.chart$Frequency
+n <- (freq/(pop*100))
+pit.chart$n <- n 
+
+attach(pit.chart)
+pit.chart2 <- pit.chart[order(-n),]
+
+# Fix frequency Data for plotting
+f <- as.numeric(as.vector(pit.chart[1:5,4]))
+c <- as.vector(pit.chart[1:5,1])
+fc<- as.data.frame(cbind(f,c))
+fc$f<-as.numeric(f)
+fc
+fc$c <- c("City of Miami", "City of Miami Gardens", "City of Homestead", "City of Hialeah", "Town of Cutler Bay")
+```
+
+```{r}
+# Plot the frequencies 
+ggplot(fc, aes(c, f))+
+  geom_bar(stat = "identity", fill="cornflowerblue")+
+  xlab("City")+
+  ylab("Frequency per Population")+ 
+  ggtitle("Cities with Highest Frequency of 311 Calls for Pit Bull Investigations for 2017")+
+  theme_minimal()
+```
+
+## LIMITATIONS 
+
+While completing the project we came face to face with many issues. Our main limitation was over complicating and getting in the data analysis. For example, the word clouds below were made but did not account for the population and although they provided another way of displaying the frequency data, they were not needed (see images below). Also, the description of the **Animal Bite 311** calls is missing from the data set. There is no way to tell what animals are involved in the actually biting incident. If the description of the call was there, we could only use the ones that regarded pitbull bites and then compare their locations to those of the **Pitbull Investigation** variable. 
+
+![Word Cloud of Animal Bite frequency before the population was accounted for (2017) ](/Users/pietr/Desktop/Data/LIS 5802 Final Project Word cloud for bite 2017.png)
+
+![Word Cloud for Pitbull Investigation frequency before population was accounted for (2017)](/Users/pietr/Desktop/Data/LIS 5802 Final Project pit word clod.png)
+
+## FINAL RESULTS 
+
+Certain areas of Miami Dade County had a high concentration of **Animal Bites to a Person** calls but not **Pitbull Investigation** calls. As mentioned before, having the descriptions of the calls could have given more insight to the data.The pit bull ordinance could also be an underlying factor in understanding why there were lower concentrations in pitbull investigations in certain areas. In conclusion, while we were able to see which areas had a higher concentration of both incidents, we couldn't further analyze the data or get a better understanding for why there were higher concentrations in some areas and not in others. 
+
+## SOURCES
+
+[1] http://eriqande.github.io/rep-res-web/lectures/making-maps-with-R.html 
+[2]  http://www.sthda.com/english/wiki/text-mining-and-word-cloud-fundamentals-in-r-5-simple-steps-you-should-know 
+
+
+
